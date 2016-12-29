@@ -31,9 +31,30 @@ class DummyFile(object):
         del self.loader
 
 
-def find_module_py33(string, path=None):
-    loader = importlib.machinery.PathFinder.find_module(string, path)
+def find_module_py33(string, path=None, sys_path=None):
+    full_name = string
 
+    if is_py34 or is_py35:
+        if path:
+            path = _normalize__path(path, sys_path)
+        full_name =  '.'.join([path, string]) if path else string
+        spec = importlib.util.find_spec(full_name)
+        origin = spec.origin
+        implicit_namespace_pkg = origin == 'namespace'
+
+        # We try to disambiguate implicit namespace with non implicit namespace
+        if implicit_namespace_pkg:
+            return None, spec.submodule_search_locations, False, True
+
+        loader = None
+        #this will execute the we have found the tail end of the dotted path
+        #and the PARENT pkg was an implicit namespace pkg
+        if hasattr(spec, 'loader'):
+            loader = spec.loader
+    else:
+        loader = importlib.machinery.PathFinder.find_module(string, path)
+
+    #After this point we assume we are not dealing with an implicit namespace pkg
     if loader is None and path is None:  # Fallback to find builtins
         try:
             loader = importlib.find_loader(string)
@@ -46,28 +67,28 @@ def find_module_py33(string, path=None):
         raise ImportError("Couldn't find a loader for {0}".format(string))
 
     try:
-        is_package = loader.is_package(string)
+        is_package = loader.is_package(full_name)
         if is_package:
             if hasattr(loader, 'path'):
                 module_path = os.path.dirname(loader.path)
             else:
                 # At least zipimporter does not have path attribute
-                module_path = os.path.dirname(loader.get_filename(string))
+                module_path = os.path.dirname(loader.get_filename(full_name))
             if hasattr(loader, 'archive'):
-                module_file = DummyFile(loader, string)
+                module_file = DummyFile(loader, full_name)
             else:
                 module_file = None
         else:
-            module_path = loader.get_filename(string)
-            module_file = DummyFile(loader, string)
+            module_path = loader.get_filename(full_name)
+            module_file = DummyFile(loader, full_name)
     except AttributeError:
         # ExtensionLoader has not attribute get_filename, instead it has a
         # path attribute that we can use to retrieve the module path
         try:
             module_path = loader.path
-            module_file = DummyFile(loader, string)
+            module_file = DummyFile(loader, full_name)
         except AttributeError:
-            module_path = string
+            module_path = full_name
             module_file = None
         finally:
             is_package = False
@@ -75,7 +96,7 @@ def find_module_py33(string, path=None):
     if hasattr(loader, 'archive'):
         module_path = loader.archive
 
-    return module_file, module_path, is_package
+    return module_file, module_path, is_package, False
 
 
 def find_module_pre_py33(string, path=None):
@@ -127,6 +148,31 @@ tuple containin an open file for the module (if not builtin), the filename
 or the name of the module if it is a builtin one and a boolean indicating
 if the module is contained in a package.
 """
+
+#if the parent pkg was already resolved as an implicit namespace pkg, we need to find out
+#in the future we can figure out a better way to represent an implicit namspace path
+def _is_implicit_namespace(inst):
+    if isinstance(inst, list) and len(inst) > 0:
+        inst = inst[0]
+    return hasattr(inst, '_name') or hasattr(inst, '_path')
+
+def _get_implicit_namespace_path(inst):
+    if isinstance(inst, list) and len(inst) > 0:
+        inst = inst[0]
+    return getattr(inst, '_path')
+
+def _get_implicit_namespace_name(inst):
+    if isinstance(inst, list) and len(inst) > 0:
+        inst = inst[0]
+    return getattr(inst, '_name')
+
+def _normalize__path(path, sys_path):
+    if _is_implicit_namespace(path):
+        path = _get_implicit_namespace_name(path)
+        return path
+    from jedi.evaluate import compiled
+    path = compiled.dotted_from_fs_path(path, sys_path)
+    return path
 
 
 # unicode function

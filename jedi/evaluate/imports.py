@@ -17,7 +17,7 @@ import pkgutil
 import sys
 from itertools import chain
 
-from jedi._compatibility import find_module, unicode
+from jedi._compatibility import find_module, unicode, _is_implicit_namespace, _get_implicit_namespace_path
 from jedi import common
 from jedi import debug
 from jedi.parser import fast
@@ -299,8 +299,8 @@ class Importer(object):
                     # At the moment we are only using one path. So this is
                     # not important to be correct.
                     try:
-                        module_file, module_path, is_pkg = \
-                            find_module(import_parts[-1], [path])
+                        module_file, module_path, is_pkg, is_implicit= \
+                            find_module(import_parts[-1], path, sys_path=sys.path)
                         break
                     except ImportError:
                         module_path = None
@@ -315,8 +315,8 @@ class Importer(object):
                 # Injecting the path directly into `find_module` did not work.
                 sys.path, temp = sys_path, sys.path
                 try:
-                    module_file, module_path, is_pkg = \
-                        find_module(import_parts[-1])
+                    module_file, module_path, is_pkg, is_implicit = \
+                        find_module(import_parts[-1], sys_path=sys.path)
                 finally:
                     sys.path = temp
             except ImportError:
@@ -336,7 +336,10 @@ class Importer(object):
             source = module_file.read()
             module_file.close()
 
-        if module_file is None and not module_path.endswith(('.py', '.zip', '.egg')):
+        if is_implicit:
+            module = _load_module_implicit_namespace(self._evaluator, parent_module=parent_module, implicit_namespace_paths=module_path, sys_path=sys_path)
+
+        elif module_file is None and not module_path.endswith(('.py', '.zip', '.egg')):
             module = compiled.load_module(self._evaluator, module_path)
         else:
             module = _load_module(self._evaluator, module_path, source, sys_path, parent_module)
@@ -401,8 +404,10 @@ class Importer(object):
                     continue
 
                 # namespace packages
-                if isinstance(scope, tree.Module) and scope.path.endswith('__init__.py'):
+                if isinstance(scope, tree.Module) and (scope.path.endswith('__init__.py') or scope.implicit_namespace_paths):
                     paths = scope.py__path__()
+                    if _is_implicit_namespace(paths): #to see if we are dealing with an implicit namespace pkg
+                        paths = _get_implicit_namespace_path(paths)
                     names += self._get_module_names(paths)
 
                 if only_modules:
@@ -515,3 +520,15 @@ def get_modules_containing_name(evaluator, mods, name):
             c = check_python_file(p)
             if c is not None and c not in mods and not isinstance(c, compiled.CompiledObject):
                 yield c
+
+
+def _load_module_implicit_namespace(evaluator, parent_module=None, implicit_namespace_paths=None, sys_path=None):
+    if sys_path is None:
+        sys_path = evaluator.sys_path
+
+    from jedi.evaluate.representation import ModuleWrapper
+    c = fast.FastParser(evaluator.grammar, common.source_to_unicode(''), '')
+    module =  ModuleWrapper(evaluator, c.module, parent_module, implicit_namespace_paths=implicit_namespace_paths)
+    evaluator.wrap(module)
+    return module
+
