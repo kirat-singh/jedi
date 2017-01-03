@@ -17,7 +17,7 @@ import pkgutil
 import sys
 from itertools import chain
 
-from jedi._compatibility import find_module, unicode, _is_implicit_namespace, _get_implicit_namespace_path
+from jedi._compatibility import find_module, unicode, _is_implicit_namespace, _get_implicit_namespace_path, ImplicitNamespacePkg
 from jedi import common
 from jedi import debug
 from jedi.parser import fast
@@ -299,8 +299,8 @@ class Importer(object):
                     # At the moment we are only using one path. So this is
                     # not important to be correct.
                     try:
-                        module_file, module_path, is_pkg, is_implicit= \
-                            find_module(import_parts[-1], path, sys_path=sys.path)
+                        module_file, module_path, is_pkg= \
+                            find_module(import_parts[-1], path)
                         break
                     except ImportError:
                         module_path = None
@@ -315,8 +315,8 @@ class Importer(object):
                 # Injecting the path directly into `find_module` did not work.
                 sys.path, temp = sys_path, sys.path
                 try:
-                    module_file, module_path, is_pkg, is_implicit = \
-                        find_module(import_parts[-1], sys_path=sys.path)
+                    module_file, module_path, is_pkg = \
+                        find_module(import_parts[-1])
                 finally:
                     sys.path = temp
             except ImportError:
@@ -336,7 +336,7 @@ class Importer(object):
             source = module_file.read()
             module_file.close()
 
-        if is_implicit:
+        if isinstance(is_pkg, ImplicitNamespacePkg):
             module = _load_module_implicit_namespace(self._evaluator, parent_module=parent_module, implicit_namespace_paths=module_path, sys_path=sys_path)
 
         elif module_file is None and not module_path.endswith(('.py', '.zip', '.egg')):

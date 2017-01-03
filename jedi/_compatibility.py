@@ -31,20 +31,28 @@ class DummyFile(object):
         del self.loader
 
 
-def find_module_py33(string, path=None, sys_path=None):
+def find_module_py33(string, path=None):
     full_name = string
 
     if is_py34 or is_py35:
+        implicit_namespace_pkg = None
         if path:
-            path = _normalize__path(path, sys_path)
+            path = _normalize__path(path, sys.path)
         full_name =  '.'.join([path, string]) if path else string
-        spec = importlib.util.find_spec(full_name)
-        origin = spec.origin
-        implicit_namespace_pkg = origin == 'namespace'
+
+        try:
+            spec = importlib.util.find_spec(full_name)
+        except ValueError:
+            #this will raise an ImportError further along
+            spec = None
+
+        if hasattr(spec, 'origin'):
+            origin = spec.origin
+            implicit_namespace_pkg = origin == 'namespace'
 
         # We try to disambiguate implicit namespace with non implicit namespace
         if implicit_namespace_pkg:
-            return None, spec.submodule_search_locations, False, True
+            return None, spec.submodule_search_locations, ImplicitNamespacePkg()
 
         loader = None
         #this will execute the we have found the tail end of the dotted path
@@ -96,7 +104,7 @@ def find_module_py33(string, path=None, sys_path=None):
     if hasattr(loader, 'archive'):
         module_path = loader.archive
 
-    return module_file, module_path, is_package, False
+    return module_file, module_path, is_package
 
 
 def find_module_pre_py33(string, path=None):
@@ -174,6 +182,12 @@ def _normalize__path(path, sys_path):
     path = compiled.dotted_from_fs_path(path, sys_path)
     return path
 
+class ImplicitNamespacePkg(object):
+    """Sentinel value to indicate presence of implicit namespace pkg """
+    def __bool__(self):
+        return False
+
+    __nonzero__ = __bool__
 
 # unicode function
 try:
