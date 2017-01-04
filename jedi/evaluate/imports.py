@@ -17,7 +17,7 @@ import pkgutil
 import sys
 from itertools import chain
 
-from jedi._compatibility import find_module, unicode, _is_implicit_namespace, _get_implicit_namespace_path, ImplicitNamespacePkg
+from jedi._compatibility import find_module, unicode, ImplicitNamespacePkg
 from jedi import common
 from jedi import debug
 from jedi.parser import fast
@@ -337,7 +337,7 @@ class Importer(object):
             module_file.close()
 
         if isinstance(is_pkg, ImplicitNamespacePkg):
-            module = _load_module_implicit_namespace(self._evaluator, parent_module=parent_module, implicit_namespace_paths=module_path, sys_path=sys_path)
+            module = _load_module_implicit_namespace(self._evaluator, parent_module=parent_module, implicit_namespace_pkg_container=module_path)
 
         elif module_file is None and not module_path.endswith(('.py', '.zip', '.egg')):
             module = compiled.load_module(self._evaluator, module_path)
@@ -403,11 +403,15 @@ class Importer(object):
                 if not scope.type == 'file_input':  # not a module
                     continue
 
+                from jedi.evaluate.representation import ImplicitNamespacePkgWrapper
                 # namespace packages
-                if isinstance(scope, tree.Module) and (scope.path.endswith('__init__.py') or scope.implicit_namespace_paths):
+                if isinstance(scope, tree.Module) and scope.path.endswith('__init__.py'):
                     paths = scope.py__path__()
-                    if _is_implicit_namespace(paths): #to see if we are dealing with an implicit namespace pkg
-                        paths = _get_implicit_namespace_path(paths)
+                    names += self._get_module_names(paths)
+
+                # implicit namespace packages
+                elif isinstance(scope, tree.Module) and isinstance(scope, ImplicitNamespacePkgWrapper):
+                    paths = scope.implicit_namespace_pkg_container.paths
                     names += self._get_module_names(paths)
 
                 if only_modules:
@@ -522,13 +526,11 @@ def get_modules_containing_name(evaluator, mods, name):
                 yield c
 
 
-def _load_module_implicit_namespace(evaluator, parent_module=None, implicit_namespace_paths=None, sys_path=None):
-    if sys_path is None:
-        sys_path = evaluator.sys_path
+def _load_module_implicit_namespace(evaluator, parent_module=None, implicit_namespace_pkg_container=None):
+    from jedi.evaluate.representation import ImplicitNamespacePkgWrapper
 
-    from jedi.evaluate.representation import ModuleWrapper
     c = fast.FastParser(evaluator.grammar, common.source_to_unicode(''), '')
-    module =  ModuleWrapper(evaluator, c.module, parent_module, implicit_namespace_paths=implicit_namespace_paths)
+    module =  ImplicitNamespacePkgWrapper(evaluator, c.module, parent_module, implicit_namespace_pkg_container=implicit_namespace_pkg_container)
     evaluator.wrap(module)
     return module
 

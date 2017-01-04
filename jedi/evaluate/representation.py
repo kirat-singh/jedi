@@ -812,11 +812,10 @@ class GlobalName(helpers.FakeName):
 
 
 class ModuleWrapper(use_metaclass(CachedMetaClass, tree.Module, Wrapper)):
-    def __init__(self, evaluator, module, parent_module=None, implicit_namespace_paths=None):
+    def __init__(self, evaluator, module, parent_module=None):
         self._evaluator = evaluator
         self.base = self._module = module
         self._parent_module = parent_module
-        self.implicit_namespace_paths = implicit_namespace_paths
 
     def names_dicts(self, search_global):
         yield self.base.names_dict
@@ -891,8 +890,6 @@ class ModuleWrapper(use_metaclass(CachedMetaClass, tree.Module, Wrapper)):
         return os.path.abspath(self._module.path)
 
     def py__package__(self):
-        if self.implicit_namespace_paths:
-            return self.implicit_namespace_paths._name
         if self._get_init_directory() is None:
             return re.sub(r'\.?[^\.]+$', '', self.py__name__())
         else:
@@ -934,10 +931,6 @@ class ModuleWrapper(use_metaclass(CachedMetaClass, tree.Module, Wrapper)):
         is a list of paths (strings).
         Raises an AttributeError if the module is not a package.
         """
-        if self.implicit_namespace_paths:
-            #return function because it is called by client
-            return lambda: [self.implicit_namespace_paths]
-
         path = self._get_init_directory()
 
         if path is None:
@@ -953,20 +946,6 @@ class ModuleWrapper(use_metaclass(CachedMetaClass, tree.Module, Wrapper)):
         """
         path = self._module.path
         names = {}
-        #TODO super hacky, consider refactoring in the future
-        # since we are dealing with implicit namespace pkgs we can't use iter_modules to find submodules
-        #the same way. So we hack around this by returning all files/folders in under the path
-        if self.implicit_namespace_paths:
-            paths = self.implicit_namespace_paths._path
-            mods = chain.from_iterable(os.listdir(path) for path in paths)
-            mods = [mod.rpartition('.')[0] if '.' in mod else mod for mod in mods]
-            for name in mods:
-                fake_n = helpers.FakeName(name)
-                # It's obviously a relative import to the current module.
-                imp = helpers.FakeImport(fake_n, self, level=1)
-                fake_n.parent = imp
-                names[name] = [fake_n]
-            return names
 
         if path is not None and path.endswith(os.path.sep + '__init__.py'):
             mods = pkgutil.iter_modules([os.path.dirname(path)])
@@ -994,3 +973,35 @@ class ModuleWrapper(use_metaclass(CachedMetaClass, tree.Module, Wrapper)):
 
     def __repr__(self):
         return "<%s: %s>" % (type(self).__name__, self._module)
+
+
+class ImplicitNamespacePkgWrapper(ModuleWrapper):
+    """
+    Extends ModuleWrapper to provide support for implcit namespace packages
+    """
+    def __init__(self, evaluator, module, parent_module=None, implicit_namespace_pkg_container=None):
+        self.implicit_namespace_pkg_container = implicit_namespace_pkg_container
+        super(ImplicitNamespacePkgWrapper, self).__init__(evaluator, module, parent_module)
+
+    def py__package__(self):
+        return self.implicit_namespace_pkg_container.name
+
+    @property
+    def py__path__(self):
+        return lambda: [self.implicit_namespace_pkg_container]
+
+    @memoize_default()
+    def _sub_modules_dict(self):
+        names = {}
+
+        paths = self.implicit_namespace_pkg_container.paths
+        file_names = chain.from_iterable(os.listdir(path) for path in paths)
+        mods = [file_name.rpartition('.')[0] if '.' in file_name else file_name for file_name in file_names]
+
+        for name in mods:
+            fake_n = helpers.FakeName(name)
+            # It's obviously a relative import to the current module.
+            imp = helpers.FakeImport(fake_n, self, level=1)
+            fake_n.parent = imp
+            names[name] = [fake_n]
+        return names

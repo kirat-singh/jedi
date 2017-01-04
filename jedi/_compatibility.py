@@ -37,7 +37,8 @@ def find_module_py33(string, path=None):
     if is_py34 or is_py35:
         implicit_namespace_pkg = None
         if path:
-            path = _normalize__path(path, sys.path)
+            #find_spec likes dotted paths
+            path = _dotted_from_fs_path_wrapper(path, sys.path)
         full_name =  '.'.join([path, string]) if path else string
 
         try:
@@ -50,9 +51,10 @@ def find_module_py33(string, path=None):
             origin = spec.origin
             implicit_namespace_pkg = origin == 'namespace'
 
-        # We try to disambiguate implicit namespace with non implicit namespace
+        # We try to disambiguate implicit namespace pkgs with non implicit namespace pkgs
         if implicit_namespace_pkg:
-            return None, spec.submodule_search_locations, ImplicitNamespacePkg()
+            container = ImplicitNamespacePkgContainer(spec.submodule_search_locations._name, spec.submodule_search_locations._path)
+            return None, container, ImplicitNamespacePkg()
 
         loader = None
         #this will execute the we have found the tail end of the dotted path
@@ -157,27 +159,11 @@ or the name of the module if it is a builtin one and a boolean indicating
 if the module is contained in a package.
 """
 
-#if the parent pkg was already resolved as an implicit namespace pkg, we need to find out
-#in the future we can figure out a better way to represent an implicit namspace path
-def _is_implicit_namespace(inst):
-    if isinstance(inst, list) and len(inst) > 0:
-        inst = inst[0]
-    return hasattr(inst, '_name') or hasattr(inst, '_path')
+#handy wrapper to deal with implicit namespace pkgs
+def _dotted_from_fs_path_wrapper(path, sys_path):
+    if isinstance(path, ImplicitNamespacePkgContainer):
+        return path.name
 
-def _get_implicit_namespace_path(inst):
-    if isinstance(inst, list) and len(inst) > 0:
-        inst = inst[0]
-    return getattr(inst, '_path')
-
-def _get_implicit_namespace_name(inst):
-    if isinstance(inst, list) and len(inst) > 0:
-        inst = inst[0]
-    return getattr(inst, '_name')
-
-def _normalize__path(path, sys_path):
-    if _is_implicit_namespace(path):
-        path = _get_implicit_namespace_name(path)
-        return path
     from jedi.evaluate import compiled
     path = compiled.dotted_from_fs_path(path, sys_path)
     return path
@@ -188,6 +174,12 @@ class ImplicitNamespacePkg(object):
         return False
 
     __nonzero__ = __bool__
+
+class ImplicitNamespacePkgContainer(object):
+    """Stores information returned from an implicit namespace spec"""
+    def __init__(self, name, paths):
+        self.name = name
+        self.paths = paths
 
 # unicode function
 try:
