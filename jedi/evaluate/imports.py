@@ -405,14 +405,14 @@ class Importer(object):
                 if not scope.type == 'file_input':  # not a module
                     continue
 
-                from jedi.evaluate.representation import ImplicitNamespacePkgWrapper
+                from jedi.evaluate.representation import ModuleWrapperImplicitNamespacePkg
                 # namespace packages
                 if isinstance(scope, tree.Module) and scope.path.endswith('__init__.py'):
                     paths = scope.py__path__()
                     names += self._get_module_names(paths)
 
                 # implicit namespace packages
-                elif isinstance(scope, tree.Module) and isinstance(scope, ImplicitNamespacePkgWrapper):
+                elif isinstance(scope, tree.Module) and isinstance(scope, ModuleWrapperImplicitNamespacePkg):
                     paths = scope.implicit_namespace_pkg_container.paths
                     names += self._get_module_names(paths)
 
@@ -529,10 +529,9 @@ def get_modules_containing_name(evaluator, mods, name):
 
 
 def _load_module_implicit_namespace(evaluator, parent_module=None, implicit_namespace_pkg_container=None):
-    from jedi.evaluate.representation import ImplicitNamespacePkgWrapper
+    from jedi.evaluate.representation import ModuleWrapperImplicitNamespacePkg
 
     c = fast.FastParser(evaluator.grammar, common.source_to_unicode(''), '')
-    module =  ImplicitNamespacePkgWrapper(evaluator, c.module, parent_module, implicit_namespace_pkg_container=implicit_namespace_pkg_container)
+    module =  ModuleWrapperImplicitNamespacePkg(evaluator, c.module, parent_module, implicit_namespace_pkg_container=implicit_namespace_pkg_container)
     evaluator.wrap(module)
     return module
-

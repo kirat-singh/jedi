@@ -32,14 +32,13 @@ class DummyFile(object):
 
 
 def find_module_py33(string, path=None):
-    full_name = string
-
     if is_py34 or is_py35:
         implicit_namespace_pkg = None
         spec = None
         loader = None
 
         if isinstance(path, ImplicitNamespacePkgContainer):
+            old_dotted_path = path.name
             path = path.paths
         spec = importlib.machinery.PathFinder.find_spec(string, path)
         if hasattr(spec, 'origin'):
@@ -48,7 +47,8 @@ def find_module_py33(string, path=None):
 
         # We try to disambiguate implicit namespace pkgs with non implicit namespace pkgs
         if implicit_namespace_pkg:
-            container = ImplicitNamespacePkgContainer(spec.submodule_search_locations._name, spec.submodule_search_locations._path)
+            fullname = string if not path else old_dotted_path +'.'+ string
+            container = ImplicitNamespacePkgContainer(fullname, spec.submodule_search_locations._path)
             return None, container, False
 
         #we have found the tail end of the dotted path
@@ -70,28 +70,28 @@ def find_module_py33(string, path=None):
         raise ImportError("Couldn't find a loader for {0}".format(string))
 
     try:
-        is_package = loader.is_package(full_name)
+        is_package = loader.is_package(string)
         if is_package:
             if hasattr(loader, 'path'):
                 module_path = os.path.dirname(loader.path)
             else:
                 # At least zipimporter does not have path attribute
-                module_path = os.path.dirname(loader.get_filename(full_name))
+                module_path = os.path.dirname(loader.get_filename(string))
             if hasattr(loader, 'archive'):
-                module_file = DummyFile(loader, full_name)
+                module_file = DummyFile(loader, string)
             else:
                 module_file = None
         else:
-            module_path = loader.get_filename(full_name)
-            module_file = DummyFile(loader, full_name)
+            module_path = loader.get_filename(string)
+            module_file = DummyFile(loader, string)
     except AttributeError:
         # ExtensionLoader has not attribute get_filename, instead it has a
         # path attribute that we can use to retrieve the module path
         try:
             module_path = loader.path
-            module_file = DummyFile(loader, full_name)
+            module_file = DummyFile(loader, string)
         except AttributeError:
-            module_path = full_name
+            module_path = string
             module_file = None
         finally:
             is_package = False

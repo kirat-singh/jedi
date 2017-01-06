@@ -946,7 +946,6 @@ class ModuleWrapper(use_metaclass(CachedMetaClass, tree.Module, Wrapper)):
         """
         path = self._module.path
         names = {}
-
         if path is not None and path.endswith(os.path.sep + '__init__.py'):
             mods = pkgutil.iter_modules([os.path.dirname(path)])
             for module_loader, name, is_pkg in mods:
@@ -975,32 +974,18 @@ class ModuleWrapper(use_metaclass(CachedMetaClass, tree.Module, Wrapper)):
         return "<%s: %s>" % (type(self).__name__, self._module)
 
 
-class ImplicitNamespacePkgWrapper(ModuleWrapper):
+class ModuleWrapperImplicitNamespacePkg(ModuleWrapper):
     """
     Extends ModuleWrapper to provide support for implcit namespace packages
     """
     def __init__(self, evaluator, module, parent_module=None, implicit_namespace_pkg_container=None):
         self.implicit_namespace_pkg_container = implicit_namespace_pkg_container
-        super(ImplicitNamespacePkgWrapper, self).__init__(evaluator, module, parent_module)
+        super(ModuleWrapperImplicitNamespacePkg, self).__init__(evaluator, module, parent_module)
 
     def py__package__(self):
         """Return the fullname
         """
-        fullname = self.implicit_namespace_pkg_container.name
-        sys_path = ''
-        paths = self.implicit_namespace_pkg_container.paths
-        import sys
-        for s in sys.path:
-            if (paths[0].startswith(s) and len(sys_path) < len(s)):
-                sys_path = s
-
-        #we just return the existing name
-        if sys_path == '':
-            return fullname
-
-        from jedi.evaluate.compiled import dotted_from_fs_path
-        fullname = dotted_from_fs_path(paths[0],  [sys_path])
-        return fullname
+        return self.implicit_namespace_pkg_container.name
 
     @property
     def py__path__(self):
