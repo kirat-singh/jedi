@@ -17,7 +17,7 @@ import pkgutil
 import sys
 from itertools import chain
 
-from jedi._compatibility import find_module, unicode, ImplicitNamespacePkg
+from jedi._compatibility import find_module, unicode, ImplicitNamespacePkgContainer
 from jedi import common
 from jedi import debug
 from jedi.parser import fast
@@ -299,6 +299,8 @@ class Importer(object):
                     # At the moment we are only using one path. So this is
                     # not important to be correct.
                     try:
+                        if not isinstance(path, ImplicitNamespacePkgContainer):
+                            path = [path]
                         module_file, module_path, is_pkg= \
                             find_module(import_parts[-1], path)
                         break
@@ -336,7 +338,7 @@ class Importer(object):
             source = module_file.read()
             module_file.close()
 
-        if isinstance(is_pkg, ImplicitNamespacePkg):
+        if isinstance(module_path, ImplicitNamespacePkgContainer):
             module = _load_module_implicit_namespace(self._evaluator, parent_module=parent_module, implicit_namespace_pkg_container=module_path)
 
         elif module_file is None and not module_path.endswith(('.py', '.zip', '.egg')):

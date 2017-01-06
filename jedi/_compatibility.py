@@ -36,17 +36,12 @@ def find_module_py33(string, path=None):
 
     if is_py34 or is_py35:
         implicit_namespace_pkg = None
-        if path:
-            #find_spec likes dotted paths
-            path = _dotted_from_fs_path_wrapper(path, sys.path)
-        full_name =  '.'.join([path, string]) if path else string
+        spec = None
+        loader = None
 
-        try:
-            spec = importlib.util.find_spec(full_name)
-        except ValueError:
-            #this will raise an ImportError further along
-            spec = None
-
+        if isinstance(path, ImplicitNamespacePkgContainer):
+            path = path.paths
+        spec = importlib.machinery.PathFinder.find_spec(string, path)
         if hasattr(spec, 'origin'):
             origin = spec.origin
             implicit_namespace_pkg = origin == 'namespace'
@@ -54,11 +49,9 @@ def find_module_py33(string, path=None):
         # We try to disambiguate implicit namespace pkgs with non implicit namespace pkgs
         if implicit_namespace_pkg:
             container = ImplicitNamespacePkgContainer(spec.submodule_search_locations._name, spec.submodule_search_locations._path)
-            return None, container, ImplicitNamespacePkg()
+            return None, container, False
 
-        loader = None
-        #this will execute the we have found the tail end of the dotted path
-        #and the PARENT pkg was an implicit namespace pkg
+        #we have found the tail end of the dotted path
         if hasattr(spec, 'loader'):
             loader = spec.loader
     else:
@@ -159,21 +152,6 @@ or the name of the module if it is a builtin one and a boolean indicating
 if the module is contained in a package.
 """
 
-#handy wrapper to deal with implicit namespace pkgs
-def _dotted_from_fs_path_wrapper(path, sys_path):
-    if isinstance(path, ImplicitNamespacePkgContainer):
-        return path.name
-
-    from jedi.evaluate import compiled
-    path = compiled.dotted_from_fs_path(path, sys_path)
-    return path
-
-class ImplicitNamespacePkg(object):
-    """Sentinel value to indicate presence of implicit namespace pkg """
-    def __bool__(self):
-        return False
-
-    __nonzero__ = __bool__
 
 class ImplicitNamespacePkgContainer(object):
     """Stores information returned from an implicit namespace spec"""

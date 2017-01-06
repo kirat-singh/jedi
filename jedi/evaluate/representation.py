@@ -984,7 +984,23 @@ class ImplicitNamespacePkgWrapper(ModuleWrapper):
         super(ImplicitNamespacePkgWrapper, self).__init__(evaluator, module, parent_module)
 
     def py__package__(self):
-        return self.implicit_namespace_pkg_container.name
+        """Return the fullname
+        """
+        fullname = self.implicit_namespace_pkg_container.name
+        sys_path = ''
+        paths = self.implicit_namespace_pkg_container.paths
+        import sys
+        for s in sys.path:
+            if (paths[0].startswith(s) and len(sys_path) < len(s)):
+                sys_path = s
+
+        #we just return the existing name
+        if sys_path == '':
+            return fullname
+
+        from jedi.evaluate.compiled import dotted_from_fs_path
+        fullname = dotted_from_fs_path(paths[0],  [sys_path])
+        return fullname
 
     @property
     def py__path__(self):
